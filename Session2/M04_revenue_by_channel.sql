@@ -4,7 +4,7 @@ select
     count(distinct userid) as "uniqueUsers",
     count(distinct case when amount is not null then userid end) as "paidUsers",
     round(cast("paidUsers" as float)/nullif(cast("uniqueUsers" as float),0),2) as "conversionRate",
-    sum(coalesce(amount,0)) "grossRevenue",
+    sum(amount) "grossRevenue",
     sum(case when refunded=false then amount else 0 end) as "netRevenue" --환불되지 않은 경우에만 계산
 from
 (
