@@ -1,6 +1,6 @@
 select
     userid,
-    sum(coalesce(amount,0)) as gross_revenue
+    sum(amount) as gross_revenue
 from
 (
     select *
