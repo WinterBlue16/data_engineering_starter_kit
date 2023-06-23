@@ -47,10 +47,10 @@ def refresh_table(conn):
 
     if count != 0:
         try:
-            cur.execute("TRUNCATE TABLE leekh090163.name_gender")
+            cur.execute("DELETE FROM TABLE leekh090163.name_gender")
             # 트랜잭션 커밋
             conn.commit()
-            print("테이블 truncate 완료")
+            print("테이블 refresh 완료")
 
         except psycopg2.Error as e:
             # 트랜잭션 롤백
