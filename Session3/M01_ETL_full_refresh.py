@@ -1,4 +1,5 @@
 # full refresh 기준으로는 : 기존 데이터 있으면 삭제 -> 다시 적재
+import os
 import requests
 import psycopg2
 
@@ -11,8 +12,8 @@ def extract(url):
 
 def get_Redshift_connection():
     host = "learnde.cduaw970ssvt.ap-northeast-2.redshift.amazonaws.com"
-    redshift_user = "leekh090163"
-    redshift_pass = "Leekh090163!1"
+    redshift_user = os.environ.get("REDSHIFT_USER")
+    redshift_pass = os.environ.get("REDSHIFT_PASSWORD")
     port = 5439
     dbname = "dev"
     conn = psycopg2.connect(
