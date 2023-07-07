@@ -1,18 +1,13 @@
-# TODO: 원본 데이터 확인
-# TODO: 기존 로직의 문제점 확인
-# TODO: 수정할 부분 특정
-# TODO: 수정 완료
-# TODO: 테스트 완료
-# TODO: 그냥 DAG 하나 새로 만들어서 cron식 수정하고 테스트하면 되는 거 아닌가??
-
 from airflow import DAG
 from airflow.decorators import task
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from datetime import datetime
 from pandas import Timestamp
+
 import yfinance as yf
 import pandas as pd
 import logging
+import psycopg2
 
 
 def get_Redshift_connection(autocommit=True):
@@ -40,6 +35,7 @@ def get_historical_prices(symbol):
 def _create_table(cur, schema, table, drop_first):
     if drop_first:
         cur.execute(f"DROP TABLE IF EXISTS {schema}.{table};")
+
     cur.execute(
         f"""
 CREATE TABLE IF NOT EXISTS {schema}.{table} (
@@ -48,8 +44,8 @@ CREATE TABLE IF NOT EXISTS {schema}.{table} (
     high float,
     low float,
     close float,
-    volume bigint
-    created_date timestamp default GETDATE()
+    volume bigint,
+    created_date timestamp     
 );"""
     )
 
@@ -60,22 +56,42 @@ def load(schema, table, records):
     cur = get_Redshift_connection()
     try:
         cur.execute("BEGIN;")
+
         # 원본 테이블이 없으면 생성 - 테이블이 처음 한번 만들어질 때 필요한 코드
         _create_table(cur, schema, table, False)
 
         # 임시 테이블로 원본 테이블을 복사
+        # MEMO: temp table은 default 값을 자동 생성해주지 않으므로 insert 문에서 반드시 GETDATE()를 명시해야 함
         cur.execute(f"CREATE TEMP TABLE t AS SELECT * FROM {schema}.{table};")
-        # 새로운 데이터 insert
         for r in records:
-            sql = f"INSERT INTO t VALUES ('{r[0]}', {r[1]}, {r[2]}, {r[3]}, {r[4]}, {r[5]});"
+            sql = f"INSERT INTO t VALUES ('{r[0]}', {r[1]}, {r[2]}, {r[3]}, {r[4]}, {r[5]}, GETDATE());"
             print(sql)
             cur.execute(sql)
 
-        # 새로운 원본 테이블 생성(empty)
+        # 새로운 원본 테이블 생성
         _create_table(cur, schema, table, True)
 
         # 임시 테이블 내용을 새로운 원본 테이블로 복사
-        cur.execute(f"INSERT INTO {schema}.{table} SELECT DISTINCT * FROM t;")
+        # 중복 데이터의 경우 created_date 기준으로 최신 데이터만 옮기기
+        cur.execute(
+            f"""
+                INSERT INTO {schema}.{table}
+                SELECT 
+                    date,
+                    "open",
+                    high,
+                    low,
+                    close,
+                    volume,
+                    created_date
+                FROM
+                (SELECT 
+                    *, 
+                    row_number() over (partition by date order by created_date desc) seq
+                from t)
+                WHERE seq = 1;
+            """
+        )
         cur.execute("COMMIT;")  # cur.execute("END;")
 
     except Exception as error:
@@ -87,11 +103,11 @@ def load(schema, table, records):
 
 
 with DAG(
-    dag_id="UpdateSymbol_v2",
+    dag_id="UpdateSymbol_v2_modified",
     start_date=datetime(2023, 5, 30),
     catchup=False,
     tags=["API"],
     schedule="0 10 * * *",
 ) as dag:
     results = get_historical_prices("AAPL")
-    load("keeyong", "stock_info_v2", results)
+    load("leekh090163", "stock_info_v2", results)
